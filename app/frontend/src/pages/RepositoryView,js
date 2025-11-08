@@ -1,0 +1,312 @@
+import { useState, useEffect } from 'react';
+import { useParams, useNavigate } from 'react-router-dom';
+import axios from 'axios';
+import { toast } from 'sonner';
+import ReactFlow, { Background, Controls, MiniMap } from 'reactflow';
+import 'reactflow/dist/style.css';
+import { Button } from '@/components/ui/button';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
+import { ArrowLeft, Loader2, Network, FileCode, GitCommit, AlertTriangle } from 'lucide-react';
+
+const BACKEND_URL = process.env.REACT_APP_BACKEND_URL;
+const API = `${BACKEND_URL}/api`;
+
+export default function RepositoryView() {
+  const { repoId } = useParams();
+  const navigate = useNavigate();
+  const [repository, setRepository] = useState(null);
+  const [modules, setModules] = useState([]);
+  const [graph, setGraph] = useState({ nodes: [], edges: [] });
+  const [analyses, setAnalyses] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [analyzing, setAnalyzing] = useState(false);
+  const [analysisForm, setAnalysisForm] = useState({
+    changed_files: ''
+  });
+
+  useEffect(() => {
+    fetchRepositoryData();
+  }, [repoId]);
+
+  const fetchRepositoryData = async () => {
+    try {
+      const [repoRes, modulesRes, graphRes, analysesRes] = await Promise.all([
+        axios.get(`${API}/repositories/${repoId}`),
+        axios.get(`${API}/repositories/${repoId}/modules`),
+        axios.get(`${API}/repositories/${repoId}/dependencies`),
+        axios.get(`${API}/repositories/${repoId}/analyses`)
+      ]);
+
+      setRepository(repoRes.data);
+      setModules(modulesRes.data);
+      setGraph(formatGraphData(graphRes.data));
+      setAnalyses(analysesRes.data);
+      setLoading(false);
+    } catch (error) {
+      toast.error('Failed to fetch repository data');
+      setLoading(false);
+    }
+  };
+
+  const formatGraphData = (data) => {
+    const nodes = data.nodes.map((node, idx) => ({
+      id: node.id,
+      data: { label: node.label },
+      position: { x: (idx % 4) * 250, y: Math.floor(idx / 4) * 150 },
+      style: {
+        background: 'rgba(59, 130, 246, 0.2)',
+        color: '#e2e8f0',
+        border: '2px solid rgba(59, 130, 246, 0.5)',
+        borderRadius: '8px',
+        padding: '10px',
+        fontSize: '14px',
+        fontWeight: '500'
+      }
+    }));
+
+    const edges = data.edges.map((edge, idx) => ({
+      id: `e${idx}`,
+      source: edge.source,
+      target: edge.target,
+      animated: true,
+      style: { stroke: 'rgba(168, 85, 247, 0.6)', strokeWidth: 2 }
+    }));
+
+    return { nodes, edges };
+  };
+
+  const handleAnalyze = async (e) => {
+    e.preventDefault();
+    setAnalyzing(true);
+
+    try {
+      const changedFiles = analysisForm.changed_files
+        .split('\n')
+        .map(f => f.trim())
+        .filter(f => f);
+
+      const response = await axios.post(`${API}/analyze/impact`, {
+        repo_id: repoId,
+        changed_files: changedFiles
+      });
+
+      toast.success('Impact analysis completed!');
+      navigate(`/analysis/${response.data.id}`);
+    } catch (error) {
+      toast.error(error.response?.data?.detail || 'Analysis failed');
+    } finally {
+      setAnalyzing(false);
+    }
+  };
+
+  const getRiskBadge = (risk) => {
+    return <span className={`status-badge risk-${risk}`} data-testid={`risk-${risk}`}>{risk.toUpperCase()}</span>;
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <Loader2 className="w-12 h-12 animate-spin text-blue-500" />
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen p-6">
+      <div className="max-w-7xl mx-auto">
+        {/* Header */}
+        <div className="glass-card p-6 mb-6">
+          <div className="flex items-center gap-4 mb-4">
+            <Button onClick={() => navigate('/')} variant="ghost" size="icon" data-testid="back-button">
+              <ArrowLeft className="w-5 h-5" />
+            </Button>
+            <div>
+              <h1 className="text-3xl font-bold text-slate-100" data-testid="repo-title">{repository.name}</h1>
+              <p className="text-slate-400 mt-1">{repository.url}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Tabs */}
+        <Tabs defaultValue="overview" className="space-y-6">
+          <TabsList className="bg-slate-800/50">
+            <TabsTrigger value="overview" data-testid="tab-overview">Overview</TabsTrigger>
+            <TabsTrigger value="dependencies" data-testid="tab-dependencies">Dependency Graph</TabsTrigger>
+            <TabsTrigger value="analyze" data-testid="tab-analyze">Analyze Changes</TabsTrigger>
+            <TabsTrigger value="history" data-testid="tab-history">Analysis History</TabsTrigger>
+          </TabsList>
+
+          {/* Overview Tab */}
+          <TabsContent value="overview">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {modules.map((module) => (
+                <Card key={module.id} className="glass-card border-slate-700" data-testid="module-card">
+                  <CardHeader>
+                    <CardTitle className="text-lg text-slate-100 flex items-center gap-2">
+                      <FileCode className="w-5 h-5 text-blue-400" />
+                      {module.name}
+                    </CardTitle>
+                    <CardDescription className="text-slate-400">
+                      {module.path}
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-400 text-sm">Files:</span>
+                        <span className="text-slate-100 font-medium">{module.file_count}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-400 text-sm">Dependencies:</span>
+                        <span className="text-slate-100 font-medium">{module.dependencies.length}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-slate-400 text-sm">Dependents:</span>
+                        <span className="text-slate-100 font-medium">{module.dependents.length}</span>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </TabsContent>
+
+          {/* Dependencies Tab */}
+          <TabsContent value="dependencies">
+            <Card className="glass-card border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-xl text-slate-100 flex items-center gap-2">
+                  <Network className="w-6 h-6 text-purple-400" />
+                  Module Dependencies
+                </CardTitle>
+                <CardDescription className="text-slate-400">
+                  Visual representation of dependencies between modules
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div style={{ height: '600px', background: 'rgba(15, 23, 42, 0.4)', borderRadius: '8px' }}>
+                  <ReactFlow
+                    nodes={graph.nodes}
+                    edges={graph.edges}
+                    fitView
+                  >
+                    <Background color="#334155" gap={16} />
+                    <Controls />
+                    <MiniMap
+                      nodeColor="#3b82f6"
+                      maskColor="rgba(0, 0, 0, 0.6)"
+                      style={{ background: 'rgba(15, 23, 42, 0.8)' }}
+                    />
+                  </ReactFlow>
+                </div>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Analyze Tab */}
+          <TabsContent value="analyze">
+            <Card className="glass-card border-slate-700">
+              <CardHeader>
+                <CardTitle className="text-xl text-slate-100 flex items-center gap-2">
+                  <GitCommit className="w-6 h-6 text-green-400" />
+                  Analyze Code Changes
+                </CardTitle>
+                <CardDescription className="text-slate-400">
+                  Provide changed files to analyze their impact on other modules
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <form onSubmit={handleAnalyze} className="space-y-4">
+                  <div>
+                    <Label htmlFor="changed-files" className="text-slate-300">Changed Files (one per line)</Label>
+                    <Textarea
+                      id="changed-files"
+                      data-testid="changed-files-input"
+                      value={analysisForm.changed_files}
+                      onChange={(e) => setAnalysisForm({ changed_files: e.target.value })}
+                      placeholder="src/module1/file1.py\nsrc/module2/file2.js\nlib/utils.ts"
+                      rows={10}
+                      className="bg-slate-800 border-slate-700 text-slate-100 font-mono"
+                      required
+                    />
+                  </div>
+                  <Button
+                    type="submit"
+                    disabled={analyzing}
+                    className="w-full bg-green-600 hover:bg-green-700"
+                    data-testid="analyze-button"
+                  >
+                    {analyzing ? (
+                      <>
+                        <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                        Analyzing...
+                      </>
+                    ) : (
+                      'Analyze Impact'
+                    )}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* History Tab */}
+          <TabsContent value="history">
+            <div className="space-y-4">
+              {analyses.length === 0 ? (
+                <Card className="glass-card border-slate-700">
+                  <CardContent className="flex flex-col items-center justify-center py-16">
+                    <AlertTriangle className="w-16 h-16 text-slate-600 mb-4" />
+                    <p className="text-slate-400 text-lg">No analyses yet</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                analyses.map((analysis) => (
+                  <Card
+                    key={analysis.id}
+                    className="glass-card border-slate-700 hover-lift cursor-pointer"
+                    onClick={() => navigate(`/analysis/${analysis.id}`)}
+                    data-testid="analysis-card"
+                  >
+                    <CardHeader>
+                      <div className="flex items-start justify-between">
+                        <div>
+                          <CardTitle className="text-lg text-slate-100">
+                            {analysis.analysis_type === 'commit' ? 'Commit' : 'PR'} Analysis
+                          </CardTitle>
+                          <CardDescription className="text-slate-400 mt-1">
+                            {analysis.reference}
+                          </CardDescription>
+                        </div>
+                        {getRiskBadge(analysis.risk_level)}
+                      </div>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-2">
+                        <div className="flex items-center gap-2 text-sm text-slate-400">
+                          <FileCode className="w-4 h-4" />
+                          {analysis.changed_files.length} file(s) changed
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-slate-400">
+                          <AlertTriangle className="w-4 h-4" />
+                          {analysis.impacted_modules.length} module(s) impacted
+                        </div>
+                        <p className="text-xs text-slate-500 mt-2">
+                          {new Date(analysis.created_at).toLocaleString()}
+                        </p>
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
+          </TabsContent>
+        </Tabs>
+      </div>
+    </div>
+  );
+}
