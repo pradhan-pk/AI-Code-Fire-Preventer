@@ -1,0 +1,12 @@
+fastapi
+uvicorn
+google-generativeai
+chromadb
+sentence-transformers
+gitpython
+python-dotenv
+networkx
+requnetworkx
+pydantic-settings
+streamlit
+streamlit-agraph

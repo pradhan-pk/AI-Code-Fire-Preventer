@@ -1,0 +1,6 @@
+meta.txt
+**/__pycache__/**
+repos/**
+.env
+chroma_db/**
+.DS_Store
