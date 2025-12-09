@@ -1,86 +1,179 @@
+# app/services/github_service.py
+
 import requests
+from typing import List, Dict
 import re
-from typing import List, Dict, Any, Tuple
 
 class GitHubService:
     def __init__(self, token: str = None):
         self.token = token
-        self.headers = {
-            "Accept": "application/vnd.github.v3+json"
-        }
+        self.headers = {}
         if token:
-            self.headers["Authorization"] = f"token {token}"
-
-    def get_commit_diff(self, repo_url: str, commit_sha: str) -> List[Dict[str, Any]]:
+            self.headers['Authorization'] = f'token {token}'
+        self.headers['Accept'] = 'application/vnd.github.v3+json'
+    
+    def get_commit_diff(self, repo_url: str, commit_sha: str) -> List[Dict[str, str]]:
         """
-        Fetches the commit details and parses the diff to find changed lines.
+        Fetch commit diff from GitHub API.
+        
+        Args:
+            repo_url: Full GitHub repo URL (e.g., https://github.com/owner/repo)
+            commit_sha: Commit SHA or short SHA
+            
+        Returns:
+            List of changed files with their diffs
         """
+        print(f"\n=== GITHUB DIFF FETCHER ===")
+        print(f"Repo URL: {repo_url}")
+        print(f"Commit SHA: {commit_sha}")
+        
         # Extract owner and repo from URL
-        # Expected format: https://github.com/owner/repo
-        match = re.search(r"github\.com/([^/]+)/([^/]+)", repo_url)
-        if not match:
-            raise ValueError("Invalid GitHub URL")
+        # URL format: https://github.com/owner/repo or https://github.com/owner/repo.git
+        repo_url = repo_url.rstrip('/').rstrip('.git')
+        parts = repo_url.split('/')
         
-        owner, repo = match.groups()
-        if repo.endswith('.git'):
-            repo = repo[:-4]
-            
-        api_url = f"https://api.github.com/repos/{owner}/{repo}/commits/{commit_sha}"
+        if len(parts) < 2:
+            print(f"ERROR: Invalid repo URL format: {repo_url}")
+            return []
         
-        response = requests.get(api_url, headers=self.headers)
-        if response.status_code != 200:
-            raise Exception(f"Failed to fetch commit: {response.status_code} {response.text}")
-            
-        commit_data = response.json()
-        changes = []
+        owner = parts[-2]
+        repo = parts[-1]
         
-        for file in commit_data.get('files', []):
-            filename = file.get('filename')
-            patch = file.get('patch')
-            status = file.get('status') # modified, added, removed, renamed
+        print(f"Owner: {owner}")
+        print(f"Repo: {repo}")
+        
+        # GitHub API endpoint
+        api_url = f'https://api.github.com/repos/{owner}/{repo}/commits/{commit_sha}'
+        
+        print(f"API URL: {api_url}")
+        print(f"Headers: {list(self.headers.keys())}")
+        
+        try:
+            response = requests.get(api_url, headers=self.headers, timeout=10)
             
-            if not patch:
-                continue
+            print(f"Response status: {response.status_code}")
+            
+            if response.status_code == 404:
+                print(f"ERROR: Commit not found. This could mean:")
+                print(f"  1. The commit SHA is incorrect")
+                print(f"  2. The repository is private and needs authentication")
+                print(f"  3. The commit hasn't been pushed yet")
+                return []
+            
+            if response.status_code == 403:
+                print(f"ERROR: API rate limit exceeded or authentication required")
+                print(f"Response: {response.text[:200]}")
+                return []
+            
+            response.raise_for_status()
+            
+            commit_data = response.json()
+            
+            # Extract files from commit
+            files = commit_data.get('files', [])
+            
+            print(f"Files changed in commit: {len(files)}")
+            
+            diff_data = []
+            
+            for file_info in files:
+                filename = file_info.get('filename', '')
+                status = file_info.get('status', '')  # added, modified, removed
+                patch = file_info.get('patch', '')
                 
-            changed_lines = self._parse_patch(patch)
-            
-            changes.append({
-                "file_path": filename,
-                "status": status,
-                "changed_lines": changed_lines, # List of line numbers in the NEW file
-                "patch": patch
-            })
-            
-        return changes
-
-    def _parse_patch(self, patch: str) -> List[int]:
-        """
-        Parses a unified diff patch string to extract the line numbers of added/modified lines.
-        Returns a list of line numbers in the new file version.
-        """
-        changed_lines = []
-        # Regex to match chunk headers: @@ -old_start,old_len +new_start,new_len @@
-        chunk_header_re = re.compile(r"^@@ -\d+(?:,\d+)? \+(\d+)(?:,(\d+))? @@")
-        
-        current_line_number = 0
-        
-        lines = patch.split('\n')
-        
-        for line in lines:
-            if line.startswith('@@'):
-                match = chunk_header_re.match(line)
-                if match:
-                    start_line = int(match.group(1))
-                    current_line_number = start_line
-            elif line.startswith('+'):
-                # Added or modified line
-                changed_lines.append(current_line_number)
-                current_line_number += 1
-            elif line.startswith(' '):
-                # Context line, just advance counter
-                current_line_number += 1
-            elif line.startswith('-'):
-                # Removed line, doesn't exist in new file, so don't count for new line numbers
-                pass
+                print(f"  - {filename} ({status})")
                 
-        return changed_lines
+                diff_entry = {
+                    'file_path': filename,
+                    'filename': filename,  # Add both for compatibility
+                    'status': status,
+                    'patch': patch,
+                    'additions': file_info.get('additions', 0),
+                    'deletions': file_info.get('deletions', 0),
+                    'changes': file_info.get('changes', 0)
+                }
+                
+                diff_data.append(diff_entry)
+            
+            print(f"Total diff entries created: {len(diff_data)}")
+            print(f"===========================\n")
+            
+            return diff_data
+            
+        except requests.exceptions.RequestException as e:
+            print(f"ERROR: Failed to fetch commit diff: {e}")
+            print(f"===========================\n")
+            return []
+        except Exception as e:
+            print(f"ERROR: Unexpected error: {e}")
+            import traceback
+            traceback.print_exc()
+            print(f"===========================\n")
+            return []
+    
+    def compare_commits(self, repo_url: str, base_sha: str, head_sha: str) -> List[Dict[str, str]]:
+        """
+        Compare two commits to get the diff.
+        Useful for comparing branches or commit ranges.
+        """
+        repo_url = repo_url.rstrip('/').rstrip('.git')
+        parts = repo_url.split('/')
+        owner = parts[-2]
+        repo = parts[-1]
+        
+        api_url = f'https://api.github.com/repos/{owner}/{repo}/compare/{base_sha}...{head_sha}'
+        
+        try:
+            response = requests.get(api_url, headers=self.headers, timeout=10)
+            response.raise_for_status()
+            
+            compare_data = response.json()
+            files = compare_data.get('files', [])
+            
+            diff_data = []
+            for file_info in files:
+                diff_entry = {
+                    'file_path': file_info.get('filename', ''),
+                    'filename': file_info.get('filename', ''),
+                    'status': file_info.get('status', ''),
+                    'patch': file_info.get('patch', ''),
+                    'additions': file_info.get('additions', 0),
+                    'deletions': file_info.get('deletions', 0),
+                    'changes': file_info.get('changes', 0)
+                }
+                diff_data.append(diff_entry)
+            
+            return diff_data
+            
+        except Exception as e:
+            print(f"Error comparing commits: {e}")
+            return []
+    
+    def get_file_content(self, repo_url: str, file_path: str, ref: str = 'main') -> str:
+        """
+        Fetch the content of a specific file from a repository.
+        """
+        repo_url = repo_url.rstrip('/').rstrip('.git')
+        parts = repo_url.split('/')
+        owner = parts[-2]
+        repo = parts[-1]
+        
+        api_url = f'https://api.github.com/repos/{owner}/{repo}/contents/{file_path}'
+        
+        params = {'ref': ref}
+        
+        try:
+            response = requests.get(api_url, headers=self.headers, params=params, timeout=10)
+            response.raise_for_status()
+            
+            content_data = response.json()
+            
+            # GitHub returns base64 encoded content
+            import base64
+            content = base64.b64decode(content_data['content']).decode('utf-8')
+            
+            return content
+            
+        except Exception as e:
+            print(f"Error fetching file content: {e}")
+            return ""
