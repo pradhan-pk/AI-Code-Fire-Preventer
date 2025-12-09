@@ -1,9 +1,13 @@
 # Impact Unplugged - Team JarvisAI⚡️
 
-**Impact Unplugged** is an AI-driven code impact analysis tool designed to help developers understand the ripple effects of their changes before they merge. By combining static analysis with Large Language Models (Google Gemini), it maps dependencies and predicts potential risks.
+**AI-Powered Multi-Repository Code Impact & Breaking Change Analyzer**
 
-> **Stop fighting fires. Prevent them.**
-> An AI-powered Code Impact Analysis Engine that predicts the ripple effects of your commits *before* you merge.
+Detect cascading effects of code changes across **multiple microservices**, **monorepos**, or **independent repositories** — before they break production.
+
+Supports **Python + Java** (mixed environments), detects **direct/indirect/cascading impacts**, **breaking changes**, **OpenAPI drift**, and generates **AI-powered remediation & test recommendations** using **Gemini 2.5 Flash**, **Llama Scout**, or **Mistral**.
+
+Live demo: [http://127.0.0.1:8000](http://127.0.0.1:8000)  
+Streamlit UI: [http://127.0.0.1:8501](http://127.0.0.1:8501)
 
 ---
 
@@ -59,85 +63,92 @@ Impact Unplugged is built on a **modular, service-oriented architecture** design
     - Identifies "Ripple Effects" (callers of changed functions).
     - Generates an AI-powered **Risk Assessment Report**.
 - **Interactive UI**: A Streamlit dashboard to visualize dependency graphs and view impact reports.
-
+- **Multi-Repo Support**: Analyze multiple repositories simultaneously.
+- **Cross-Language**: Python and Java parsing with tree-sitter.
+- **AI Fallbacks**: Switches to Mistral or Llama Scout on rate limits.
 
 ---
 
 ## 🛠️ Tech Stack
 
-- **Backend**: FastAPI, Python 3.12
-- **AI/LLM**: Google Gemini 2.5 Flash (`google-generativeai`)
+- **Backend**: FastAPI, Python 3.10+
+- **AI/LLM**: Google Gemini 2.5 Flash (`google-generativeai`), Mistral, Llama Scout (OpenRouter)
 - **Vector DB**: ChromaDB (for semantic code search)
 - **Graph**: NetworkX (for dependency modeling)
 - **Frontend**: Streamlit, Streamlit Agraph
-- **Utils**: GitPython, Pydantic
+- **Parsing**: Tree-sitter (bundled languages), AST
+- **Utils**: GitPython, Pydantic, Requests
+
+---
 
 ## 📦 Installation
 
-1.  **Clone the Repository**:
-    ```bash
-    git clone <your-repo-url>
-    cd code-fire-preventer
-    ```
+1. **Clone the Repository**:
+   ```bash
+   git clone https://github.com/yourusername/AI-Code-Fire-Preventer.git
+   cd AI-Code-Fire-Preventer
 
-2.  **Set up Environment**:
-    Create a `.env` file in the root directory:
-    ```ini
-    GOOGLE_API_KEY=your_google_api_key
-    CHROMA_DB_DIR=./chroma_db
-    ```
+2. **Set up Environment**:
+    Create a .env file in the root directory:
+    GOOGLE_API_KEY=your_gemini_api_key_here
+    # Optional: For LLM fallbacks
+    OPENROUTER_API_KEY=your_openrouter_key_here
+    MISTRAL_API_KEY=your_mistral_key_here
 
-3.  **Install Dependencies**:
-    ```bash
+3. **Install Dependencies**
     pip install -r requirements.txt
-    ```
 
-## 🏃‍♂️ Usage
 
-### 1. Start the Backend
-Run the FastAPI server:
-```bash
-uvicorn main:app --reload
-```
-The API will be available at `http://127.0.0.1:8000`.
+🏃‍♂️ Usage
+1. Start the Backend
+Run the FastAPI server: uvicorn main:app --reload
+The API will be available at http://127.0.0.1:8000.
 
-### 2. Start the Frontend
-Run the Streamlit app:
-```bash
-streamlit run streamlit_app.py
-```
-The UI will open in your browser at `http://localhost:8501`.
+2. Start the Frontend
+Run the Streamlit app: streamlit run streamlit_app.py
+The UI will open in your browser at http://localhost:8501.
 
-### 3. Workflow
-1.  **Analyze Repo**: Go to the "Repository Analysis" tab, enter a GitHub URL (e.g., `https://github.com/psf/requests`), and click "Analyze". This builds the dependency graph.
-2.  **View Graph**: Once analyzed, click "Load Graph" to visualize the module connections.
-3.  **Check Impact**: Switch to the "Impact Analysis" tab. Enter the same Repo URL and a specific **Commit SHA**.
-4.  **Get Report**: The tool will show you:
-    - **Directly Affected Functions**
-    - **Ripple Effects** (who calls them)
-    - **AI Risk Analysis** (bugs, functional impact, test cases)
+3. Workflow
+Analyze Repos: In the "Repository Setup" tab, add GitHub URLs and start analysis.
+Wait for Completion: Status updates automatically.
+Analyze Impact: In the "Impact Analysis" tab, select a repo, enter commit SHA, and analyze.
+View Results: See impacts, breaking changes, AI report, and graph.
 
-## 📂 Project Structure
 
-```
-.
+📂 Project Structure
+
+AI-Code-Fire-Preventer/
+├── analyses/                    # Example analysis outputs
 ├── app/
+│   ├── __pycache__/
+│   ├── models/
+│   │   └── impact_node.py       # Pydantic/Node models
 │   ├── services/
-│   │   ├── analyzer.py       # Dependency analysis & Impact logic
-│   │   ├── github_service.py # GitHub API integration
-│   │   ├── repo_manager.py   # Cloning & file management
-│   │   └── vector_store.py   # ChromaDB & Chunking
-│   └── config.py             # Settings
-├── main.py                   # FastAPI entrypoint
-├── streamlit_app.py          # Frontend
-├── requirements.txt          # Dependencies
-└── README.md                 # Documentation
-```
+│   │   ├── dependency_resolver.py
+│   │   ├── enhanced_analysis.py # Core impact engine
+│   │   ├── github_service.py
+│   │   ├── multi_repo_manager.py
+│   │   ├── vector_store.py
+│   │   └── __init__.py
+│   └── config.py                # Settings & .env loading
+├── chroma_db/                   # Persistent Chroma vector store
+├── llm_cache/                   # Optional LLM response cache
+├── repos/                       # Cloned repositories (persistent)
+├── utils/
+├── .env                         # Your API keys
+├── .gitignore                                      
+├── main.py                      # FastAPI entrypoint
+├── README.md
+├── requirements.txt
+├── streamlit_app.py             # Interactive frontend
 
-## 🤝 Contributing
 
-Contributions are welcome! Please open an issue or submit a pull request.
+## Contributing
+Contributions are  welcome!
 
-## 📄 License
+## License
+MIT © 2025 Team JarvisAI@Impact Unplugged
 
-MIT License
+You now have one of the most advanced open-source code impact analyzers available.
+Go break things safely.
+Made with ❤️ by developers who hate surprise production incidents
